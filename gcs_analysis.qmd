@@ -1,0 +1,95 @@
+---
+title: "gcs_analysis"
+format: html
+editor: visual
+---
+
+# Objective
+
+## Programs of Interest
+
+Illuminate what the potential client Department spent on the following major Ground Combat Systems (GCS) programs:
+
+-   Abrams tank (e.g., M1A1)
+-   Bradley fighting vehicle (e.g., M2A1)
+-   Stryker armored personnel carrier (e.g., M1130)
+
+## Analysis Requirements
+
+Produce an analysis of FY16 through FY20 federal contract data for these programs:
+
+-   Summarize prominent vendors, funding/contracting offices, and agencies
+-   Outline key technologies, products, and services acquired
+-   Increase understanding of what future acquisitions for each of these programs may look like given:
+    -   Where they are in their life cycles
+    -   What potential risks may be associated with the management of the programs
+
+## Analysis Structure
+
+1)  Solutions to the following pain points the potential client has previously encountered in their data, including:
+
+-   Vendor name normalization
+-   Misidentified or unidentified GCS contracts and vendors
+
+2)  Assessment of the following:
+
+-   Spending trends
+-   Key technologies
+-   Programs
+-   Vendors
+-   Any other elements interesting about the market (e.g., current acquisition life cycle status of the GCS programs and what it means for future investments; or past/future federal budget alignment within each program).
+
+3)  Assessment should include:
+
+-   Conclusion with key takeaways
+-   Conclusion with 1-2 interesting insights that potential client can use to inform their acquisition decisions
+
+4)  Commented-code or a short summary of methodology used to clean/normalize, organize, and/or transform the data.
+
+# Parameters
+
+## Library
+
+```{r}
+#packages for data manipulation
+library(dplyr)
+library(openxlsx2)
+library(purrr)
+
+#packages required to access usaspending api
+library(httr)
+library(jsonlite)
+library(compiler)
+
+# compilePKGS()
+setCompilerOptions(suppressAll = TRUE)
+# enableJIT enables or disables just-in-time (JIT) compilation. 
+# JIT is disabled if the argument is 0. 
+# If level is 3, all top level loops are compiled before they are executed.
+enableJIT(3) # 3 will appear
+```
+
+## File Location
+
+```{r}
+dir_path <- paste0("/Users/", Sys.info()["user"], "/R/DATA/")
+file_name <- "ground_vehicles.xlsx"
+data_location <- file.path(dir_path, file_name)
+```
+
+# Read Data
+
+```{r}
+ground_vehicles <- read_xlsx(data_location)
+```
+
+# Querying USASpending API
+
+## Background
+
+The USAspending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data. ([read more](https://api.usaspending.gov/))
+
+To understand how to 
+```{r}
+
+```
