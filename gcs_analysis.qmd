@@ -78,7 +78,7 @@ data_location <- file.path(dir_path, file_name)
 
 ```{r}
 ground_vehicles <- read_xlsx(data_location)
-View(ground_vehicles)
+View(ground_vehicles) # open dataframe when this chunk is run
 ```
 
 # Clean data
@@ -87,17 +87,64 @@ View(ground_vehicles)
 
 ```{r}
 # filter dataframe based on ground combat systems program portfolio
-## use toupper since data appears to be ALL CAPS
+## use toupper to normalize data to be ALL CAPS
 keywords <- toupper(c("Abrams tank", "M1-A1", "M-1 Abrams", "Abrams", "M1 Abrams",
               "Bradley fighting vehicle", "Bradley", "BVF", "M2-A1", "M2A1", "M2",
               "Stryker armored personnel carrier", "M1130", "M1255 CVV", "M1130 Commander Vehicle", "M1130 CV"))
+abrams <- keywords[1:5]
+bradley <- keywords[6:11]
+stryker <- keywords[12:17]
+
+# create gcs_item column for ease of analysis later on
 gcs_portfolio <- ground_vehicles %>% 
-  filter(str_detect(toupper(Title), pattern = paste(keywords, collapse = '|')))
+  filter(str_detect(toupper(Title), pattern = paste(keywords, collapse = '|'))) %>% 
+  mutate(
+     gcs_item = case_when(
+      grepl(paste(abrams, collapse = '|'), toupper(Title)) ~ "abrams",
+      grepl(paste(bradley, collapse = '|'), toupper(Title)) ~ "bradley",
+      grepl(paste(stryker, collapse = '|'), toupper(Title)) ~ "stryker",
+      TRUE ~ NA_character_  # Default case if none of the above conditions are met
+    )
+  )
 ```
 
-# USASpending for Additional Data
+# Solution 1:  stringR/regex for normalization
 
-## Background
+To normalize data fields such as vendor name, it is often easily done with regular expressions and `stringR` functions. To identify the extent of the problem, we can first examine the number of unique `Vendor Name`s available in the data set.
+
+## Identify problem
+```{r}
+unique_vendor_count <- ground_vehicles %>% 
+  pull(12) %>% 
+  unique()
+
+print(length(unique_vendor_count))
+```
+
+## Apply stringR/regex solution
+```{r}
+ground_vehicles_cleaned <- ground_vehicles %>% 
+  rename(vendor_name = 12) %>% 
+  mutate(
+    vendor_name_clean = toupper(vendor_name),  # convert to all caps
+    vendor_name_clean = str_replace_all(vendor_name_clean, "[.,]", ""),  # remove punctuation
+    vendor_name_clean = str_replace_all(vendor_name_clean, "\\bCOMPANY\\b", "CO"),  # normalize "COMPANY" to "CO"
+    vendor_name_clean = str_replace_all(vendor_name_clean, "\\bCORPORATION\\b", "CORP")  # normalize "CORPORATION" to "CORP"
+  )
+```
+
+## Evaluate solution
+```{r}
+unique_vendor_count_cleaned <- ground_vehicles_cleaned %>% 
+  pull(15) %>% 
+  unique()
+
+print(paste0("There are now ", length(unique_vendor_count_cleaned), " unique vendor names in the data set, when formerly there were ", length(unique_vendor_count), "! This is a difference of ", length(unique_vendor_count)-length(unique_vendor_count_cleaned), " overlapping names, prior to normalization. Nice!"))
+```
+
+# Solution 2:  query USASpending for additional data
+
+This solution is the initial step to provide misidentified or unidentified GCS contract modifications. With this same method, other API calls to the USASpending database can be queried to find additional provide misidentified or unidentified GCS contracts and vendors.
 
 The USASpending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data ([read more](https://api.usaspending.gov/)). This example shows how to access this API utilizing the `httr2` package.
 
@@ -112,6 +159,9 @@ There are limits to the external server's ability to handle requests, thus a fin
 unique_ids <- gcs_portfolio %>% 
   select("contractnumber" = 2, "deliveryorder" = 3) %>% 
   mutate(across(everything(), ~ remove_non_alphanumeric(.x))) %>% 
+  unique()
+raw_ids <- raw_id(unique_ids) %>% 
+  unlist %>% 
   unique()
 ```
 
@@ -135,7 +185,7 @@ contract_num_do_formatted <- combined_list[2] %>%
 #do_segments <- split_segments(lst = contract_num_do_formatted, segments = 0.2)
 ```
 
-## Grab Contract data without DOs
+## Perform API call
 
 ```{r}
 # initialize list
@@ -150,7 +200,101 @@ final_con_list$con <- transactions_request(combined_list$contract_num_formatted)
 final_con_list$do  <- transactions_request(combined_list$contract_num_do_formatted)
 ```
 
+## USASpending DF
 ```{r}
-usa_spending_df <- extract_results(final_con_list)
+usa_spending_df <- extract_results(final_con_list) %>% 
+  mutate(
+    award_id = str_extract(id, paste(raw_ids, collapse = "|"))
+  )
 ```
 
+# Assessments
+
+## Spending trends
+Key take-aways:
+-   Award amounts in this dataset max at 2019
+-   Running total view shows a very similar trend among all 3 programs
+```{r}
+# select data for plot
+spending <- gcs_portfolio %>% 
+  select(1, "fiscal_year" = 5, "award_amount" = 7, 15) %>% 
+  mutate_at(vars("award_amount"), ~replace_na(., 0)) %>%  
+  group_by(fiscal_year, gcs_item) %>%
+  mutate(running_total = cumsum(award_amount))
+
+# convert gcs_item to factor for proper ordering on the plot
+spending$gcs_item <- factor(spending$gcs_item, levels = c("abrams", "bradley", "stryker"))
+
+# create the scatterplot
+ggplot(spending, aes(x = fiscal_year, y = award_amount, group = gcs_item, color = gcs_item)) +
+  geom_point() +
+  labs(x = "Fiscal Year", y = "Award Amount", title = "Award Amount by Fiscal Year and GCS Item") +
+  theme_minimal()
+
+# create the running total line plot
+ggplot(spending, aes(x = fiscal_year, y = running_total, group = gcs_item, color = gcs_item)) +
+  geom_line() +
+  labs(x = "Fiscal Year", y = "Running Total Award Amount", title = "Running Total Award Amount by Fiscal Year and GCS Item") +
+  theme_minimal()
+```
+
+## Key technologies
+Key take-aways:
+-   Product and Service Code (PSC) is a four-digit code used by all federal government contracting activities for identifying and classifying the services and Supplies & Equipment (S&E) that are purchased under contrac
+-   Abrams by far had the most data points available, which is representative of contract modifications
+-   Abrams also had the most diverse number of unique PSC values
+-   More granular detail can be discern if additional time were utilized to scrape PSC definitions and identify key technologies or PSC of interest
+```{r}
+# select data for plot
+technologies <- gcs_portfolio %>% 
+  select(1, "fiscal_year" = 5, "psc" = 14, 15) %>% 
+  mutate(psc_cleaned = str_extract(psc, "\\(([A-Za-z0-9]{4})\\)"))
+
+# create the stacked bar chart
+ggplot(technologies, aes(x = gcs_item, fill = psc_cleaned)) +
+  geom_bar(position = "stack") +
+  labs(x = "GCS Program", y = "Count", title = "Unique PSC by GCS Program") +
+  theme_minimal() +
+   theme(legend.position = "none")
+```
+
+
+## Programs
+-   The Department of Defense by far had the most data points available, which is representative of contract modifications or contractshare
+-   It is surprising to see many other contracting agencies funding these programs, albiet it is an insignificant share
+```{r}
+# select data for plot
+programs <- gcs_portfolio %>% 
+  select(1, "contracting_agency" = 9, 15)
+
+# create the stacked bar chart
+ggplot(programs, aes(x = gcs_item, fill = contracting_agency)) +
+  geom_bar(position = "stack") +
+  labs(x = "GCS Program", y = "Count", title = "Program by Contractshare Count of Agency Funding") +
+  theme_minimal()
+```
+
+## Vendors
+-  L3 Technologies, Inc.had the highest award amount in 2016, but thereafter General Dynamics Land Systems, Inc. dominated in all subsequent years available in the dataset
+```{r}
+# select data for plot
+programs <- gcs_portfolio %>% 
+  select(1, "award_amount" = 7, "vendor" = 12, 15, "fiscal_year" = 5) %>%  
+  mutate_at(vars("award_amount"), ~replace_na(., 0)) 
+
+# find the vendor with the highest award amount each year
+max_award_per_year <- programs %>%
+  group_by(fiscal_year) %>%
+  top_n(1, award_amount) %>%
+  ungroup()
+
+# Create ggplot
+ggplot(max_award_per_year, aes(x = factor(fiscal_year), y = award_amount, fill = vendor)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Vendors with Highest Award Amount Each Year",
+       x = "Year",
+       y = "Award Amount",
+       fill = "Vendor") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```

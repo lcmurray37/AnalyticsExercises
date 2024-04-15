@@ -23,6 +23,23 @@ format_contract_numbers <- function(df) {
               contract_num_do_formatted = contract_num_do_formatted))
 }
 
+# create raw list of usaspending award IDs
+raw_id <- function(df) {
+  
+  raw_id_list <- list()
+  
+  for (i in 1:nrow(df)) {
+    if (is.na(df$deliveryorder[i]) & !is.na(df$contractnumber[i])) {
+      raw_id_list[i] <-  df$contractnumber[i]
+    } else if (!is.na(df$deliveryorder[i]) & !is.na(df$contractnumber[i])) {
+      raw_id_list[i] <- df$contractnumber[i]
+    } else {
+      raw_id_list[i] <- df$deliveryorder[i]
+    }
+  }
+  return(raw_id_list)
+}
+
 # splice list into `segments` due to server error with larger lists
 split_segments <- function(lst, segments = 0.1) {
   # Calculate the length of the list and round to the nearest integer
@@ -140,4 +157,10 @@ extract_results <- function(nested_list) {
   results_df <- bind_rows(results_list)
   
   return(results_df)
+}
+
+# function to geocode city and state to get latitude and longitude
+geocode_city_state <- function(city, state) {
+  location <- ggmap::geocode(paste(city, state, sep = ", "))
+  return(location)
 }
