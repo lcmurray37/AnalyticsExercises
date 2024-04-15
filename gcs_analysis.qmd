@@ -46,9 +46,9 @@ Produce an analysis of FY16 through FY20 federal contract data for these program
 
 4)  Commented-code or a short summary of methodology used to clean/normalize, organize, and/or transform the data.
 
-# Parameters
+# Initialize Project
 
-## Library
+## Load packages & functions
 
 ```{r}
 # packages for data manipulation
@@ -56,6 +56,7 @@ library(dplyr)
 library(openxlsx2)
 library(purrr)
 library(stringr)
+library(stringdist)
 
 # packages required to access usaspending api
 library(httr2)
@@ -65,7 +66,7 @@ library(jsonlite)
 source(paste0(getwd(), "/functions/clean.R"))
 ```
 
-## File Location
+## Set parameters
 
 ```{r}
 dir_path <- paste0("/Users/", Sys.info()["user"], "/R/DATA/")
@@ -73,23 +74,42 @@ file_name <- "ground_vehicles.xlsx"
 data_location <- file.path(dir_path, file_name)
 ```
 
-# Read Data
+## Read data
 
 ```{r}
 ground_vehicles <- read_xlsx(data_location)
 View(ground_vehicles)
 ```
 
-# Contract Information and Validation USASpending API
+# Clean data
+
+## Identify cons of interest
+
+```{r}
+# filter dataframe based on ground combat systems program portfolio
+## use toupper since data appears to be ALL CAPS
+keywords <- toupper(c("Abrams tank", "M1-A1", "M-1 Abrams", "Abrams", "M1 Abrams",
+              "Bradley fighting vehicle", "Bradley", "BVF", "M2-A1", "M2A1", "M2",
+              "Stryker armored personnel carrier", "M1130", "M1255 CVV", "M1130 Commander Vehicle", "M1130 CV"))
+gcs_portfolio <- ground_vehicles %>% 
+  filter(str_detect(toupper(Title), pattern = paste(keywords, collapse = '|')))
+```
+
+# USASpending for Additional Data
 
 ## Background
 
-The USAspending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data ([read more](https://api.usaspending.gov/)). This example 
+The USASpending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data ([read more](https://api.usaspending.gov/)). This example shows how to access this API utilizing the `httr2` package.
+
+There are limits to the external server's ability to handle requests, thus a final solution would be implementing a full data pipeline to leverage all relevant USASpending information. This can be done through several ways, including:
+
+-   Creating an external storage and server host of a copy of the database for faster calls
+-   Customizing API calls with more efficient querying
 
 ## Identify Contract/DOs
 
 ```{r}
-unique_ids <- ground_vehicles %>% 
+unique_ids <- gcs_portfolio %>% 
   select("contractnumber" = 2, "deliveryorder" = 3) %>% 
   mutate(across(everything(), ~ remove_non_alphanumeric(.x))) %>% 
   unique()
@@ -111,9 +131,8 @@ contract_num_do_formatted <- combined_list[2] %>%
   unlist() %>% 
   unique()
 
-# splice list, due to time-out error
-con_tenths <- splice_into_tenths(contract_num_formatted)
-do_tenths <- splice_into_tenths(contract_num_do_formatted)
+## splice list, if time-out error
+#do_segments <- split_segments(lst = contract_num_do_formatted, segments = 0.2)
 ```
 
 ## Grab Contract data without DOs
@@ -124,45 +143,14 @@ final_con_list <- list()
 ```
 
 ```{r}
-final_con_list$tenth1 <- transactions_request(con_tenths$tenth1)
+final_con_list$con <- transactions_request(combined_list$contract_num_formatted)
 ```
 
 ```{r}
-final_con_list$tenth2 <- transactions_request(con_tenths$tenth2)
+final_con_list$do  <- transactions_request(combined_list$contract_num_do_formatted)
 ```
 
 ```{r}
-final_con_list$tenth3 <- transactions_request(con_tenths$tenth3)
+usa_spending_df <- extract_results(final_con_list)
 ```
 
-```{r}
-final_con_list$tenth4 <- transactions_request(con_tenths$tenth4)
-```
-
-```{r}
-final_con_list$tenth5 <- transactions_request(con_tenths$tenth5)
-```
-
-```{r}
-final_con_list$tenth6 <- transactions_request(con_tenths$tenth5)
-```
-
-```{r}
-final_con_list$tenth7 <- transactions_request(con_tenths$tenth7)
-```
-
-```{r}
-final_con_list$tenth8 <- transactions_request(con_tenths$tenth8)
-```
-
-```{r}
-final_con_list$tenth9 <- transactions_request(con_tenths$tenth9)
-```
-
-```{r}
-final_con_list$tenth10 <- transactions_request(con_tenths$tenth10)
-```
-
-```{r}
-test <- extract_results(final_con_list)
-```

@@ -23,20 +23,20 @@ format_contract_numbers <- function(df) {
               contract_num_do_formatted = contract_num_do_formatted))
 }
 
-# splice list into tenths due to server error with larger lists
-splice_into_tenths <- function(lst) {
+# splice list into `segments` due to server error with larger lists
+split_segments <- function(lst, segments = 0.1) {
   # Calculate the length of the list and round to the nearest integer
   len <- round(length(lst))
   
-  # Calculate the index positions for each tenth
-  divisions <- seq(0, 1, by = 0.1)
+  # Calculate the index positions
+  divisions <- seq(0, 1, by = segments)
   indexes <- ceiling(len * divisions)
   
-  # Create tenths using index positions
-  tenths <- map2(indexes[-length(indexes)], indexes[-1], ~ lst[.x:.y])
+  # Create segments using index positions
+  segments <- map2(indexes[-length(indexes)], indexes[-1], ~ lst[.x:.y])
   
-  # Return tenths as a list of lists
-  setNames(tenths, paste0("tenth", 1:length(tenths)))
+  # Return segments as a list of lists
+  setNames(segments, paste0("seg", 1:length(segments)))
 }
 
 # perform transactions API request from USASpending
