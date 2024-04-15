@@ -57,6 +57,8 @@ library(openxlsx2)
 library(purrr)
 library(stringr)
 library(stringdist)
+library(tidyr)
+library(ggplot2)
 
 # packages required to access usaspending api
 library(httr2)
@@ -108,11 +110,12 @@ gcs_portfolio <- ground_vehicles %>%
   )
 ```
 
-# Solution 1:  stringR/regex for normalization
+# Solution 1: stringR/regex for normalization
 
 To normalize data fields such as vendor name, it is often easily done with regular expressions and `stringR` functions. To identify the extent of the problem, we can first examine the number of unique `Vendor Name`s available in the data set.
 
 ## Identify problem
+
 ```{r}
 unique_vendor_count <- ground_vehicles %>% 
   pull(12) %>% 
@@ -122,6 +125,7 @@ print(length(unique_vendor_count))
 ```
 
 ## Apply stringR/regex solution
+
 ```{r}
 ground_vehicles_cleaned <- ground_vehicles %>% 
   rename(vendor_name = 12) %>% 
@@ -134,6 +138,7 @@ ground_vehicles_cleaned <- ground_vehicles %>%
 ```
 
 ## Evaluate solution
+
 ```{r}
 unique_vendor_count_cleaned <- ground_vehicles_cleaned %>% 
   pull(15) %>% 
@@ -142,7 +147,7 @@ unique_vendor_count_cleaned <- ground_vehicles_cleaned %>%
 print(paste0("There are now ", length(unique_vendor_count_cleaned), " unique vendor names in the data set, when formerly there were ", length(unique_vendor_count), "! This is a difference of ", length(unique_vendor_count)-length(unique_vendor_count_cleaned), " overlapping names, prior to normalization. Nice!"))
 ```
 
-# Solution 2:  query USASpending for additional data
+# Solution 2: query USASpending for additional data
 
 This solution is the initial step to provide misidentified or unidentified GCS contract modifications. With this same method, other API calls to the USASpending database can be queried to find additional provide misidentified or unidentified GCS contracts and vendors.
 
@@ -201,6 +206,7 @@ final_con_list$do  <- transactions_request(combined_list$contract_num_do_formatt
 ```
 
 ## USASpending DF
+
 ```{r}
 usa_spending_df <- extract_results(final_con_list) %>% 
   mutate(
@@ -211,9 +217,12 @@ usa_spending_df <- extract_results(final_con_list) %>%
 # Assessments
 
 ## Spending trends
+
 Key take-aways:
+
 -   Award amounts in this dataset max at 2019
 -   Running total view shows a very similar trend among all 3 programs
+
 ```{r}
 # select data for plot
 spending <- gcs_portfolio %>% 
@@ -239,11 +248,13 @@ ggplot(spending, aes(x = fiscal_year, y = running_total, group = gcs_item, color
 ```
 
 ## Key technologies
+
 Key take-aways:
--   Product and Service Code (PSC) is a four-digit code used by all federal government contracting activities for identifying and classifying the services and Supplies & Equipment (S&E) that are purchased under contrac
--   Abrams by far had the most data points available, which is representative of contract modifications
--   Abrams also had the most diverse number of unique PSC values
+
+-   Product and Service Code (PSC) is a four-digit code used by all federal government contracting activities for identifying and classifying the services and Supplies & Equipment (S&E) that are purchased under contract
+-   Abrams by far had the most data points available, which is representative of contract modifications - Abrams also had the most diverse number of unique PSC values
 -   More granular detail can be discern if additional time were utilized to scrape PSC definitions and identify key technologies or PSC of interest
+
 ```{r}
 # select data for plot
 technologies <- gcs_portfolio %>% 
@@ -258,10 +269,11 @@ ggplot(technologies, aes(x = gcs_item, fill = psc_cleaned)) +
    theme(legend.position = "none")
 ```
 
-
 ## Programs
+
 -   The Department of Defense by far had the most data points available, which is representative of contract modifications or contractshare
 -   It is surprising to see many other contracting agencies funding these programs, albiet it is an insignificant share
+
 ```{r}
 # select data for plot
 programs <- gcs_portfolio %>% 
@@ -275,7 +287,9 @@ ggplot(programs, aes(x = gcs_item, fill = contracting_agency)) +
 ```
 
 ## Vendors
--  L3 Technologies, Inc.had the highest award amount in 2016, but thereafter General Dynamics Land Systems, Inc. dominated in all subsequent years available in the dataset
+
+-   L3 Technologies, Inc. had the highest award amount in 2016, but thereafter General Dynamics Land Systems, Inc. dominated in all subsequent years available in the dataset
+
 ```{r}
 # select data for plot
 programs <- gcs_portfolio %>% 
