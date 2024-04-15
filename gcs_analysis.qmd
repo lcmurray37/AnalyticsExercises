@@ -51,22 +51,18 @@ Produce an analysis of FY16 through FY20 federal contract data for these program
 ## Library
 
 ```{r}
-#packages for data manipulation
+# packages for data manipulation
 library(dplyr)
 library(openxlsx2)
 library(purrr)
+library(stringr)
 
-#packages required to access usaspending api
-library(httr)
+# packages required to access usaspending api
+library(httr2)
 library(jsonlite)
-library(compiler)
 
-# compilePKGS()
-setCompilerOptions(suppressAll = TRUE)
-# enableJIT enables or disables just-in-time (JIT) compilation. 
-# JIT is disabled if the argument is 0. 
-# If level is 3, all top level loops are compiled before they are executed.
-enableJIT(3) # 3 will appear
+# source anonymous functions
+source(paste0(getwd(), "/functions/clean.R"))
 ```
 
 ## File Location
@@ -83,13 +79,118 @@ data_location <- file.path(dir_path, file_name)
 ground_vehicles <- read_xlsx(data_location)
 ```
 
+# Clean Data
+
+## Identify Contract/DOs
+
+```{r}
+unique_ids <- ground_vehicles %>% 
+  select("contractnumber" = 2, "deliveryorder" = 3) %>% 
+  mutate(across(everything(), ~ remove_non_alphanumeric(.x))) %>% 
+  unique()
+```
+
+## Convert list to API call format
+
+```{r}
+combined_list <- format_contract_numbers(unique_ids)
+combined_list <- lapply(combined_list, na.omit)
+```
+
+## Convert list to vectors
+
+```{r}
+contract_num_formatted <- combined_list[1] %>% 
+  unlist() %>% 
+  unique()
+
+contract_num_do_formatted <- combined_list[2] %>% 
+  unlist() %>% 
+  unique()
+```
+
+## Splice list, due to time-out error
+
+```{r}
+con_tenths <- splice_into_tenths(contract_num_formatted)
+do_tenths <- splice_into_tenths(contract_num_do_formatted)
+```
+
 # Querying USASpending API
 
 ## Background
 
 The USAspending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data. ([read more](https://api.usaspending.gov/))
 
-To understand how to 
-```{r}
+## Grab Contract data without DOs
 
+```{r}
+# initialize list
+final_con_list <- list()
+```
+
+```{r}
+final_con_list$tenth1 <- transactions_request(con_tenths$tenth1)
+```
+
+```{r}
+final_con_list$tenth2 <- transactions_request(con_tenths$tenth2)
+```
+
+```{r}
+final_con_list$tenth3 <- transactions_request(con_tenths$tenth3)
+```
+
+```{r}
+final_con_list$tenth4 <- transactions_request(con_tenths$tenth4)
+```
+
+```{r}
+final_con_list$tenth5 <- transactions_request(con_tenths$tenth5)
+```
+
+```{r}
+final_con_list$tenth10 <- transactions_request(con_tenths$tenth10)
+```
+
+```{r}
+test <- extract_results(final_con_list)
+```
+
+## Grab Contract data with DOs
+
+```{r}
+# initialize list
+final_do_list <- list()
+```
+
+```{r}
+final_do_list$tenth1 <- safe_api_call(do_tenths$tenth1)
+```
+
+```{r}
+test <- map(do_tenths$tenth1, summary_request)
+```
+
+```{r}
+```
+
+
+## Grab Contract data with DOs
+
+```{r}
+# contracts with no DOs
+usa_do_list <- map(do_tenths, perform_request)
+```
+
+### Store Contract data in list
+
+```{r}
+usa_do_df <- combine_results(usa_do_list)
+```
+
+## Create combined df
+
+```{r}
+usaspending_df <- rbind(usa_df, usa_do_df)
 ```
