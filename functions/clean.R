@@ -56,10 +56,9 @@ transactions_request <- function(query_string_list) {
     # perform the request
     resp <- req %>% 
       req_body_json(
-      list(
-        award_id = contract_num_input,
-        limit = 1,
-        page = 1
+        list(
+          award_id = contract_num_input,
+          page = 1
       )
     ) %>% 
     req_perform()

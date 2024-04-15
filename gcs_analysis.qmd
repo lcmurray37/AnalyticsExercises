@@ -1,5 +1,5 @@
 ---
-title: "gcs_analysis"
+title: "Ground Combat Systems (GCS) Analysis"
 format: html
 editor: visual
 ---
@@ -77,9 +77,14 @@ data_location <- file.path(dir_path, file_name)
 
 ```{r}
 ground_vehicles <- read_xlsx(data_location)
+View(ground_vehicles)
 ```
 
-# Clean Data
+# Contract Information and Validation USASpending API
+
+## Background
+
+The USAspending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data ([read more](https://api.usaspending.gov/)). This example 
 
 ## Identify Contract/DOs
 
@@ -93,13 +98,11 @@ unique_ids <- ground_vehicles %>%
 ## Convert list to API call format
 
 ```{r}
+# use ananymous function 
 combined_list <- format_contract_numbers(unique_ids)
 combined_list <- lapply(combined_list, na.omit)
-```
 
-## Convert list to vectors
-
-```{r}
+# convert list to vectors
 contract_num_formatted <- combined_list[1] %>% 
   unlist() %>% 
   unique()
@@ -107,20 +110,11 @@ contract_num_formatted <- combined_list[1] %>%
 contract_num_do_formatted <- combined_list[2] %>% 
   unlist() %>% 
   unique()
-```
 
-## Splice list, due to time-out error
-
-```{r}
+# splice list, due to time-out error
 con_tenths <- splice_into_tenths(contract_num_formatted)
 do_tenths <- splice_into_tenths(contract_num_do_formatted)
 ```
-
-# Querying USASpending API
-
-## Background
-
-The USAspending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data. ([read more](https://api.usaspending.gov/))
 
 ## Grab Contract data without DOs
 
@@ -150,47 +144,25 @@ final_con_list$tenth5 <- transactions_request(con_tenths$tenth5)
 ```
 
 ```{r}
+final_con_list$tenth6 <- transactions_request(con_tenths$tenth5)
+```
+
+```{r}
+final_con_list$tenth7 <- transactions_request(con_tenths$tenth7)
+```
+
+```{r}
+final_con_list$tenth8 <- transactions_request(con_tenths$tenth8)
+```
+
+```{r}
+final_con_list$tenth9 <- transactions_request(con_tenths$tenth9)
+```
+
+```{r}
 final_con_list$tenth10 <- transactions_request(con_tenths$tenth10)
 ```
 
 ```{r}
 test <- extract_results(final_con_list)
-```
-
-## Grab Contract data with DOs
-
-```{r}
-# initialize list
-final_do_list <- list()
-```
-
-```{r}
-final_do_list$tenth1 <- safe_api_call(do_tenths$tenth1)
-```
-
-```{r}
-test <- map(do_tenths$tenth1, summary_request)
-```
-
-```{r}
-```
-
-
-## Grab Contract data with DOs
-
-```{r}
-# contracts with no DOs
-usa_do_list <- map(do_tenths, perform_request)
-```
-
-### Store Contract data in list
-
-```{r}
-usa_do_df <- combine_results(usa_do_list)
-```
-
-## Create combined df
-
-```{r}
-usaspending_df <- rbind(usa_df, usa_do_df)
 ```
