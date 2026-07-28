@@ -245,6 +245,8 @@ theme_army <- function() {
       plot.title.position = "plot"
     )
 }
+
+gcs_plots <- list()
 ```
 
 ## Spending trends
@@ -267,7 +269,7 @@ spending <- gcs_portfolio %>%
     )
   )
 
-ggplot(
+gcs_plots$spending_trends <- ggplot(
   spending,
   aes(fiscal_year, award_amount, color = gcs_item, group = gcs_item)
 ) +
@@ -330,7 +332,7 @@ technologies <- gcs_portfolio %>%
   ungroup()
 
 # top 10 PSC by GCS program
-ggplot(technologies, aes(x = reorder(psc_cleaned, n), y = n, fill = gcs_item)) +
+gcs_plots$psc_code <- ggplot(technologies, aes(x = reorder(psc_cleaned, n), y = n, fill = gcs_item)) +
   geom_col(show.legend = FALSE) +
   facet_wrap(~gcs_item, scales = "free_y") +
   coord_flip() +
@@ -364,7 +366,7 @@ program_summary <- gcs_portfolio %>%
     .groups = "drop"
   )
 
-ggplot(
+gcs_plots$agency_share <- ggplot(
   program_summary,
   aes(
     x = reorder(gcs_item, primary_agency_share),
@@ -428,7 +430,7 @@ vendor_labels <- vendor_summary %>%
     .groups = "drop"
   )
 
-ggplot(
+gcs_plots$vendors <- ggplot(
   vendor_summary,
   aes(
     x = reorder(vendor, vendor_total),
@@ -473,4 +475,23 @@ ggplot(
     fill = "Program"
   ) +
   theme_army()
+```
+
+# Print
+
+```{r}
+fig_path <- "figures"
+
+#dir.create(fig_path, showWarnings = FALSE)
+
+purrr::iwalk(
+  gcs_plots,
+  ~ ggsave(
+      filename = file.path(fig_path, paste0(.y, ".png")),
+      plot = .x,
+      width = 8,
+      height = 6,
+      dpi = 300
+    )
+)
 ```
