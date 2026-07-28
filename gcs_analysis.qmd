@@ -60,6 +60,7 @@ library(stringdist)
 library(tidyr)
 library(ggplot2)
 library(scales)
+library(readxl)
 
 # packages required to access usaspending api
 library(httr2)
@@ -72,7 +73,8 @@ source(paste0(getwd(), "/functions/clean.R"))
 ## Set parameters
 
 ```{r}
-dir_path <- paste0("/Users/", Sys.info()["user"], "/R/DATA/")
+#dir_path <-paste0("/Users/", Sys.info()["user"], "/R/DATA/")
+dir_path <- paste0("C:\\Users\\lmurray\\Software\\Git Local\\AnalyticsExercises")
 file_name <- "ground_vehicles.xlsx"
 data_location <- file.path(dir_path, file_name)
 ```
@@ -201,6 +203,7 @@ usa_spending_df <- extract_results(final_con_list) %>%
   mutate(
     award_id = str_extract(id, paste(raw_ids, collapse = "|"))
   )
+View(usa_spending_df)
 ```
 
 # Assessments
