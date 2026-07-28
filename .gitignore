@@ -4,4 +4,5 @@
 .Ruserdata
 *.pdf
 *.Rmd
+*.xlsx
 gcs_analysis.rmarkdown
