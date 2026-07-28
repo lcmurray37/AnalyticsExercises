@@ -59,13 +59,14 @@ library(stringr)
 library(stringdist)
 library(tidyr)
 library(ggplot2)
+library(scales)
 
 # packages required to access usaspending api
 library(httr2)
 library(jsonlite)
 
 # source anonymous functions
-source(paste0(getwd(), "/functions/clean_update.R"))
+source(paste0(getwd(), "/functions/clean.R"))
 ```
 
 ## Set parameters
@@ -193,7 +194,7 @@ final_con_list$con <- transactions_request(combined_list$contract_num_formatted)
 final_con_list$do  <- transactions_request(combined_list$contract_num_do_formatted)
 ```
 
-## USASpending DF
+## Cleaned USASpending query
 
 ```{r}
 usa_spending_df <- extract_results(final_con_list) %>% 
@@ -204,35 +205,106 @@ usa_spending_df <- extract_results(final_con_list) %>%
 
 # Assessments
 
-## Spending trends
-
-Key take-aways:
-
--   Award amounts in this dataset max at 2019
--   Running total view shows a very similar trend among all 3 programs
+## Create theme
 
 ```{r}
-# select data for plot
-spending <- gcs_portfolio %>% 
-  select(1, "fiscal_year" = 5, "award_amount" = 7, 15) %>% 
-  mutate_at(vars("award_amount"), ~replace_na(., 0)) %>%  
+program_colors <- c(
+  abrams  = "#4B5320",  # Army Green
+  bradley = "#1C1C1C",  # Army Black
+  stryker = "#FFCC01"   # Army Gold
+)
+
+agency_colors <- c(
+  "#4B5320",
+  "#FFCC01",
+  "#A7A8AA",
+  "#556B2F",
+  "#6B8E23",
+  "#D9D9D6"
+)
+
+program_colors_high_contrast <- c(
+  abrams  = "#4B5320",  # Army Green
+  bradley = "#C69214",  # Army Gold (darker)
+  stryker = "#5B6770"   # Steel Gray
+)
+
+theme_army <- function() {
+  theme_minimal(base_size = 18) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(color = "grey85"),
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      plot.title = element_text(face = "bold", size = 20),
+      axis.title = element_text(face = "bold"),
+      plot.title.position = "plot"
+    )
+}
+```
+
+## Spending trends
+
+-   Award amounts in this dataset max at 2019
+-   Abrams by far spent the most
+
+```{r}
+spending <- gcs_portfolio %>%
+  select(fiscal_year = 5, award_amount = 7, gcs_item = 15) %>%
+  mutate(gcs_item = str_to_title(gcs_item)) %>%
   group_by(fiscal_year, gcs_item) %>%
-  mutate(running_total = cumsum(award_amount))
+  summarise(award_amount = sum(replace_na(award_amount, 0)), .groups = "drop") %>%
+  complete(fiscal_year, gcs_item, fill = list(award_amount = 0)) %>%
+  mutate(
+    label_y = case_when(
+      gcs_item == "Abrams" ~ award_amount + 150000000,
+      gcs_item == "Bradley" ~ award_amount + 80000000,
+      gcs_item == "Stryker" ~ award_amount - 50000000
+    )
+  )
 
-# convert gcs_item to factor for proper ordering on the plot
-spending$gcs_item <- factor(spending$gcs_item, levels = c("abrams", "bradley", "stryker"))
-
-# create the scatterplot
-ggplot(spending, aes(x = fiscal_year, y = award_amount, group = gcs_item, color = gcs_item)) +
-  geom_point() +
-  labs(x = "Fiscal Year", y = "Award Amount", title = "Award Amount by Fiscal Year and GCS Item") +
-  theme_minimal()
-
-# create the running total line plot
-ggplot(spending, aes(x = fiscal_year, y = running_total, group = gcs_item, color = gcs_item)) +
-  geom_line() +
-  labs(x = "Fiscal Year", y = "Running Total Award Amount", title = "Running Total Award Amount by Fiscal Year and GCS Item") +
-  theme_minimal()
+ggplot(
+  spending,
+  aes(fiscal_year, award_amount, color = gcs_item, group = gcs_item)
+) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  geom_label(
+  aes(
+    y = label_y,
+    label = scales::label_dollar(
+      scale_cut = scales::cut_short_scale()
+    )(award_amount)
+  ),
+  size = 2.8,
+  label.size = 0.15,
+  fill = "white",
+  color = "black",
+  show.legend = FALSE
+) +
+  scale_color_manual(
+    values = c(
+      Abrams = "#4B5320",
+      Bradley = "#1C1C1C",
+      Stryker = "#FFCC01"
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::label_dollar(scale_cut = scales::cut_short_scale()),
+    expand = expansion(mult = c(0.05, 0.25))
+  ) +
+  scale_x_continuous(
+    breaks = sort(unique(spending$fiscal_year))
+  ) +
+  labs(
+    title = "Annual Contract Spending by Ground Combat System",
+    subtitle = "FY16-FY20 award obligations by program",
+    x = "Fiscal Year",
+    y = "Award Amount",
+    color = "Program"
+  ) +
+  theme_army()
 ```
 
 ## Key technologies
@@ -240,38 +312,82 @@ ggplot(spending, aes(x = fiscal_year, y = running_total, group = gcs_item, color
 Key take-aways:
 
 -   Product and Service Code (PSC) is a four-digit code used by all federal government contracting activities for identifying and classifying the services and Supplies & Equipment (S&E) that are purchased under contract
--   Abrams by far had the most data points available, which is representative of contract modifications - Abrams also had the most diverse number of unique PSC values
+-   Top 10 PSC by GCS program shows two top PSC shared by the Abrams and Bradley programs
 -   More granular detail can be discern if additional time were utilized to scrape PSC definitions and identify key technologies or PSC of interest
 
 ```{r}
-# select data for plot
+# select and count PSCs by GCS program
 technologies <- gcs_portfolio %>% 
   select(1, "fiscal_year" = 5, "psc" = 14, 15) %>% 
-  mutate(psc_cleaned = str_extract(psc, "\\(([A-Za-z0-9]{4})\\)"))
+  mutate(psc_cleaned = str_extract(psc, "\\(([A-Za-z0-9]{4})\\)")) %>%
+  filter(!is.na(psc_cleaned)) %>%
+  count(gcs_item, psc_cleaned, sort = TRUE) %>%
+  group_by(gcs_item) %>%
+  slice_max(order_by = n, n = 10, with_ties = FALSE) %>%
+  ungroup()
 
-# create the stacked bar chart
-ggplot(technologies, aes(x = gcs_item, fill = psc_cleaned)) +
-  geom_bar(position = "stack") +
-  labs(x = "GCS Program", y = "Count", title = "Unique PSC by GCS Program") +
-  theme_minimal() +
-   theme(legend.position = "none")
+# top 10 PSC by GCS program
+ggplot(technologies, aes(x = reorder(psc_cleaned, n), y = n, fill = gcs_item)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~gcs_item, scales = "free_y") +
+  coord_flip() +
+  scale_fill_manual(values = program_colors) +
+  labs(
+    x = "Product & Service Code (PSC)",
+    y = "Contract Count",
+    title = "Top 10 Product & Service Codes by GCS Program"
+  ) +
+  theme_army()
 ```
 
 ## Programs
 
--   The Department of Defense by far had the most data points available, which is representative of contract modifications or contractshare
--   It is surprising to see many other contracting agencies funding these programs, albiet it is an insignificant share
+-   The Department of Defense by far had the most data points available, which is representative of contract modifications or contract share
 
 ```{r}
-# select data for plot
-programs <- gcs_portfolio %>% 
-  select(1, "contracting_agency" = 9, 15)
+# create agency share table
+program_summary <- gcs_portfolio %>%
+  select(
+    gcs_item = 15,
+    contracting_agency = 9
+  ) %>%
+  filter(!is.na(contracting_agency)) %>%
+  group_by(gcs_item) %>%
+  summarise(
+    total_contracts = n(),
+    unique_agencies = n_distinct(contracting_agency),
+    primary_agency = names(sort(table(contracting_agency), decreasing = TRUE))[1],
+    primary_agency_share = max(table(contracting_agency)) / n(),
+    .groups = "drop"
+  )
 
-# create the stacked bar chart
-ggplot(programs, aes(x = gcs_item, fill = contracting_agency)) +
-  geom_bar(position = "stack") +
-  labs(x = "GCS Program", y = "Count", title = "Program by Contractshare Count of Agency Funding") +
-  theme_minimal()
+ggplot(
+  program_summary,
+  aes(
+    x = reorder(gcs_item, primary_agency_share),
+    y = primary_agency_share,
+    fill = gcs_item
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(label = scales::percent(primary_agency_share, accuracy = 1)),
+    hjust = -0.1,
+    size = 5
+  ) +
+  scale_fill_manual(values = program_colors) +
+  scale_y_continuous(
+    labels = scales::percent,
+    limits = c(0, 1.1)
+  ) +
+  coord_flip() +
+  labs(
+    title = "GCS Program Contracting Concentration",
+    subtitle = "Share of contracts awarded by largest contracting agency (DoD)",
+    x = NULL,
+    y = "Share of Contract Actions"
+  ) +
+  theme_army()
 ```
 
 ## Vendors
@@ -279,24 +395,79 @@ ggplot(programs, aes(x = gcs_item, fill = contracting_agency)) +
 -   L3 Technologies, Inc. had the highest award amount in 2016, but thereafter General Dynamics Land Systems, Inc. dominated in all subsequent years available in the dataset
 
 ```{r}
-# select data for plot
-programs <- gcs_portfolio %>% 
-  select(1, "award_amount" = 7, "vendor" = 12, 15, "fiscal_year" = 5) %>%  
-  mutate_at(vars("award_amount"), ~replace_na(., 0)) 
+# summarize vendor awards
+vendor_summary <- gcs_portfolio %>% 
+  select(
+    award_amount = 7,
+    vendor = 12,
+    gcs_item = 15
+  ) %>%
+  mutate(
+    award_amount = replace_na(award_amount, 0)
+  ) %>%
+  group_by(vendor, gcs_item) %>%
+  summarise(
+    total_awards = sum(award_amount),
+    .groups = "drop"
+  ) %>%
+  group_by(vendor) %>%
+  mutate(
+    vendor_total = sum(total_awards)
+  ) %>%
+  ungroup() %>%
+  slice_max(vendor_total, n = 10) 
 
-# find the vendor with the highest award amount each year
-max_award_per_year <- programs %>%
-  group_by(fiscal_year) %>%
-  top_n(1, award_amount) %>%
-  ungroup()
+# calculate vendor totals for labels
+vendor_labels <- vendor_summary %>%
+  group_by(vendor) %>%
+  summarise(
+    vendor_total = sum(total_awards),
+    .groups = "drop"
+  )
 
-# Create ggplot
-ggplot(max_award_per_year, aes(x = factor(fiscal_year), y = award_amount, fill = vendor)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Vendors with Highest Award Amount Each Year",
-       x = "Year",
-       y = "Award Amount",
-       fill = "Vendor") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
+ggplot(
+  vendor_summary,
+  aes(
+    x = reorder(vendor, vendor_total),
+    y = total_awards,
+    fill = gcs_item
+  )
+) +
+  geom_col(width = 0.7) +
+  geom_text(
+    data = vendor_labels,
+    aes(
+      x = vendor,
+      y = vendor_total,
+      label = scales::label_dollar(
+        scale_cut = scales::cut_short_scale()
+      )(vendor_total)
+    ),
+    inherit.aes = FALSE,
+    hjust = -0.1,
+    size = 4
+  ) +
+  coord_flip() +
+  scale_fill_manual(
+    values = program_colors_high_contrast,
+    labels = c(
+      abrams = "Abrams",
+      bradley = "Bradley",
+      stryker = "Stryker"
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::label_dollar(
+      scale_cut = scales::cut_short_scale()
+    ),
+    expand = expansion(mult = c(0, 0.2))
+  ) +
+  labs(
+    title = "Top Vendors by Ground Combat System Award Amount (FY16-FY20)",
+    subtitle = "General Dynamics Land Systems dominates the GCS vendor base",
+    x = NULL,
+    y = "Award Amount",
+    fill = "Program"
+  ) +
+  theme_army()
 ```
