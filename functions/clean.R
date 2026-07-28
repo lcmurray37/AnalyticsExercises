@@ -1,123 +1,95 @@
 # remove non-alphanumeric characters for later string manipulation
-remove_non_alphanumeric <- function(string) {
-  stringr::str_replace_all(string, "[^A-Za-z0-9]", "")
+remove_non_alphanumeric <- function(x) {
+  stringr::str_remove_all(x, "[^[:alnum:]]")
 }
 
 # create list of usaspending award ID api calls
 format_contract_numbers <- function(df) {
   
-  contract_num_formatted <- vector("character")
-  contract_num_do_formatted <- vector("character")
-  
-  for (i in 1:nrow(df)) {
-    if (is.na(df$deliveryorder[i]) & !is.na(df$contractnumber[i])) {
-      contract_num_formatted[i] <- paste0("CONT_AWD_", df$contractnumber[i], "_9700_-NONE-_-NONE-")
-    } else if (!is.na(df$deliveryorder[i]) & !is.na(df$contractnumber[i])) {
-      contract_num_do_formatted[i] <- paste0("CONT_AWD_", df$deliveryorder[i], "_9700_", df$contractnumber[i], "_9700")
-    } else {
-      contract_num_formatted[i] <- paste0("CONT_AWD_", df$deliveryorder[i], "_9700_-NONE-_-NONE-")
-    }
-  }
-  
-  return(list(contract_num_formatted = contract_num_formatted, 
-              contract_num_do_formatted = contract_num_do_formatted))
+  list(
+    contract_num_formatted = dplyr::case_when(
+      is.na(df$deliveryorder) & !is.na(df$contractnumber) ~
+        paste0("CONT_AWD_", df$contractnumber, "_9700_-NONE-_-NONE-"),
+      
+      !is.na(df$deliveryorder) & !is.na(df$contractnumber) ~
+        paste0("CONT_AWD_", df$deliveryorder, "_9700_", df$contractnumber, "_9700"),
+      
+      TRUE ~
+        paste0("CONT_AWD_", df$deliveryorder, "_9700_-NONE-_-NONE-")
+    ),
+    
+    contract_num_do_formatted = dplyr::if_else(
+      !is.na(df$deliveryorder) & !is.na(df$contractnumber),
+      paste0("CONT_AWD_", df$deliveryorder, "_9700_", df$contractnumber, "_9700"),
+      NA_character_
+    )
+  )
 }
 
 # create raw list of usaspending award IDs
 raw_id <- function(df) {
-  
-  raw_id_list <- list()
-  
-  for (i in 1:nrow(df)) {
-    if (is.na(df$deliveryorder[i]) & !is.na(df$contractnumber[i])) {
-      raw_id_list[i] <-  df$contractnumber[i]
-    } else if (!is.na(df$deliveryorder[i]) & !is.na(df$contractnumber[i])) {
-      raw_id_list[i] <- df$contractnumber[i]
-    } else {
-      raw_id_list[i] <- df$deliveryorder[i]
-    }
-  }
-  return(raw_id_list)
+  dplyr::coalesce(df$contractnumber, df$deliveryorder)
 }
 
 # splice list into `segments` due to server error with larger lists
-split_segments <- function(lst, segments = 0.1) {
-  # Calculate the length of the list and round to the nearest integer
-  len <- round(length(lst))
-  
-  # Calculate the index positions
-  divisions <- seq(0, 1, by = segments)
-  indexes <- ceiling(len * divisions)
-  
-  # Create segments using index positions
-  segments <- map2(indexes[-length(indexes)], indexes[-1], ~ lst[.x:.y])
-  
-  # Return segments as a list of lists
-  setNames(segments, paste0("seg", 1:length(segments)))
+split_segments <- function(x, batch_size = 50) {
+  split(x, ceiling(seq_along(x) / batch_size))
 }
 
 # perform transactions API request from USASpending
-transactions_request <- function(query_string_list) {
+transactions_request <- function(ids) {
   
-  # create connection
-  req <- request("https://api.usaspending.gov/api/v2/transactions/")
+  req <- httr2::request(
+    "https://api.usaspending.gov/api/v2/transactions/"
+  )
   
-  # initialize list
-  usa_list <- list()
+  out <- purrr::map(
+    ids,
+    \(id) {
+      req |>
+        httr2::req_body_json(
+          list(
+            award_id = id,
+            page = 1
+          )
+        ) |>
+        httr2::req_perform() |>
+        httr2::resp_body_json()
+    },
+    .progress = "Transactions"
+  )
   
-  for(i in seq_along(query_string_list)){
-  
-    # define input based on a single list value
-    contract_num_input <- query_string_list[i]
-    
-    # perform the request
-    resp <- req %>% 
-      req_body_json(
-        list(
-          award_id = contract_num_input,
-          page = 1
-      )
-    ) %>% 
-    req_perform()
-  
-  # store in a list
-  usa_list[[contract_num_input]] <- resp %>% 
-    resp_body_json()
-  }
-  return(usa_list)
+  names(out) <- ids
+  out
 }
 
 # perform summary API request from USASpending
-summary_request <- function(contract_num_input) {
+summary_request <- function(contract) {
   
-  # create connection
-  req <- request("https://api.usaspending.gov/api/v2/search/transaction_spending_summary/")
-  
-  # initialize list
-  sum_list <- list()
-  
-  # create the request body using req_body_json
-  resp <- req %>% 
-    req_body_json(
-    list(
-      filters = list(
-        keywords = list(contract_num_input)
+  httr2::request(
+    "https://api.usaspending.gov/api/v2/search/transaction_spending_summary/"
+  ) |>
+    httr2::req_body_json(
+      list(
+        filters = list(
+          keywords = list(contract)
+        )
       )
-    )
-  ) %>% 
-  req_perform()
+    ) |>
+    httr2::req_perform() |>
+    httr2::resp_body_json()
   
-  # store in a list
-  sum_list[[contract_num_input]] <- resp %>% 
-    resp_body_json()
-
 }
 
 # function to perform API requests with a delay and error handling
 safe_api_call <- function(input_list, req_func, delay_time = 1) {
   
   # Wrap your API request function with safely
-  safe_transactions_request <- safely(req_func)
+  safe_transactions_request <-
+    purrr::possibly(
+      transactions_request,
+      otherwise = list()
+    )
   
   # Perform API requests on the list of vectors with a delay between requests
   results <- map(input_list, function(vector) {
@@ -130,33 +102,13 @@ safe_api_call <- function(input_list, req_func, delay_time = 1) {
 }
 
 # recursive function to traverse the nested list structure and extract "results" lists
-extract_results <- function(nested_list) {
-  
-  # initalize empty results list
-  results_list <- list()
-  
-  # traverse the nested structure
-  traverse_nested <- function(nested_list) {
-    if (is.list(nested_list)) {
-      for (element in nested_list) {
-        if ("results" %in% names(element)) {
-          # if "results" list is found, add it to the results_list
-          results_list <<- c(results_list, element$results)
-        } else {
-          # recursively traverse the nested structure
-          traverse_nested(element)
-        }
-      }
-    }
-  }
-  
-  # start traversing the nested structure
-  traverse_nested(nested_list)
-  
-  # convert each "results" list to a data frame and bind them together
-  results_df <- bind_rows(results_list)
-  
-  return(results_df)
+extract_results <- function(x) {
+  dplyr::bind_rows(
+    purrr::map(
+      x$con,
+      ~ dplyr::bind_rows(.x$results)
+    )
+  )
 }
 
 # function to geocode city and state to get latitude and longitude

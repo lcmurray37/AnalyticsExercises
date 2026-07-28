@@ -65,7 +65,7 @@ library(httr2)
 library(jsonlite)
 
 # source anonymous functions
-source(paste0(getwd(), "/functions/clean.R"))
+source(paste0(getwd(), "/functions/clean_update.R"))
 ```
 
 ## Set parameters
@@ -176,18 +176,6 @@ raw_ids <- raw_id(unique_ids) %>%
 # use ananymous function 
 combined_list <- format_contract_numbers(unique_ids)
 combined_list <- lapply(combined_list, na.omit)
-
-# convert list to vectors
-contract_num_formatted <- combined_list[1] %>% 
-  unlist() %>% 
-  unique()
-
-contract_num_do_formatted <- combined_list[2] %>% 
-  unlist() %>% 
-  unique()
-
-## splice list, if time-out error
-#do_segments <- split_segments(lst = contract_num_do_formatted, segments = 0.2)
 ```
 
 ## Perform API call
