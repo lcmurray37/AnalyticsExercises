@@ -110,9 +110,3 @@ extract_results <- function(x) {
     )
   )
 }
-
-# function to geocode city and state to get latitude and longitude
-geocode_city_state <- function(city, state) {
-  location <- ggmap::geocode(paste(city, state, sep = ", "))
-  return(location)
-}

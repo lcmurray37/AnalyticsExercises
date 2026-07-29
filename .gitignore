@@ -5,5 +5,7 @@
 *.pdf
 *.Rmd
 *.xlsx
+*.html
 figures/
+gcs_analysis_files/
 gcs_analysis.rmarkdown
