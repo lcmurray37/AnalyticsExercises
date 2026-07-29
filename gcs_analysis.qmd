@@ -16,8 +16,9 @@ Illustrate funding for the following major U.S. Army Ground Combat Systems (GCS)
 
 ## Analysis Requirements
 
-Produce an analysis of FY16 through FY20 federal contract data for the programs of interest: - Summarize prominent vendors, funding/contracting offices, and agencies
+Produce an analysis of FY16 through FY20 federal contract data for the programs of interest:
 
+-    Summarize prominent vendors, funding/contracting offices, and agencies
 -   Outline key spending information and vendors
 -   Supplement with additional data
 
@@ -91,7 +92,7 @@ gcs_portfolio <- ground_vehicles %>%
 
 ## Normalize data
 
-To normalize data fields such as vendor name, it is often easily done with regular expressions and `stringR` functions. To identify the extent of the problem, we can first examine the number of unique `Vendor Name`s available in the data set.
+To normalize data fields such as vendor name, it is often easily done with regular expressions and `stringR` functions. To identify the extent of the problem, we can first examine the number of unique `Vendor Names` available in the data set.
 
 ### Identify problem
 
@@ -479,7 +480,9 @@ gcs_plots$agency_share <- ggplot(
 
 gcs_plots$agency_share
 ```
+
 ### Abrams
+
 ```{r}
 abrams_agency <- gcs_portfolio %>%
   filter(str_to_title(gcs_item) == "Abrams") %>%
