@@ -8,43 +8,17 @@ editor: visual
 
 ## Programs of Interest
 
-Illuminate what the potential client Department spent on the following major Ground Combat Systems (GCS) programs:
-
+Illustrate funding for the following major U.S. Army Ground Combat Systems (GCS) programs:
 -   Abrams tank (e.g., M1A1)
 -   Bradley fighting vehicle (e.g., M2A1)
 -   Stryker armored personnel carrier (e.g., M1130)
 
 ## Analysis Requirements
 
-Produce an analysis of FY16 through FY20 federal contract data for these programs:
-
+Produce an analysis of FY16 through FY20 federal contract data for the programs of interest:
 -   Summarize prominent vendors, funding/contracting offices, and agencies
--   Outline key technologies, products, and services acquired
--   Increase understanding of what future acquisitions for each of these programs may look like given:
-    -   Where they are in their life cycles
-    -   What potential risks may be associated with the management of the programs
-
-## Analysis Structure
-
-1)  Solutions to the following pain points the potential client has previously encountered in their data, including:
-
--   Vendor name normalization
--   Misidentified or unidentified GCS contracts and vendors
-
-2)  Assessment of the following:
-
--   Spending trends
--   Key technologies
--   Programs
--   Vendors
--   Any other elements interesting about the market (e.g., current acquisition life cycle status of the GCS programs and what it means for future investments; or past/future federal budget alignment within each program).
-
-3)  Assessment should include:
-
--   Conclusion with key takeaways
--   Conclusion with 1-2 interesting insights that potential client can use to inform their acquisition decisions
-
-4)  Commented-code or a short summary of methodology used to clean/normalize, organize, and/or transform the data.
+-   Outline key spending information and vendors
+-   Supplement with additional data
 
 # Initialize Project
 
@@ -53,14 +27,13 @@ Produce an analysis of FY16 through FY20 federal contract data for these program
 ```{r}
 # packages for data manipulation
 library(dplyr)
-library(openxlsx2)
 library(purrr)
 library(stringr)
 library(stringdist)
-library(tidyr)
 library(ggplot2)
 library(scales)
 library(readxl)
+library(tidyr)
 
 # packages required to access usaspending api
 library(httr2)
@@ -74,7 +47,7 @@ source(paste0(getwd(), "/functions/clean.R"))
 
 ```{r}
 #dir_path <-paste0("/Users/", Sys.info()["user"], "/R/DATA/")
-dir_path <- paste0("C:\\Users\\lmurray\\Software\\Git Local\\AnalyticsExercises")
+dir_path <- paste0("C:\\Users\\", Sys.info()["user"], "\\Software\\Git Local\\AnalyticsExercises")
 file_name <- "ground_vehicles.xlsx"
 data_location <- file.path(dir_path, file_name)
 ```
@@ -83,12 +56,12 @@ data_location <- file.path(dir_path, file_name)
 
 ```{r}
 ground_vehicles <- read_xlsx(data_location)
-View(ground_vehicles) # open dataframe when this chunk is run
+ground_vehicles
 ```
 
 # Clean data
 
-## Identify cons of interest
+## Identify contracts of interest
 
 ```{r}
 # filter dataframe based on ground combat systems program portfolio
@@ -113,11 +86,11 @@ gcs_portfolio <- ground_vehicles %>%
   )
 ```
 
-# Solution 1: stringR/regex for normalization
+## Normalize data
 
 To normalize data fields such as vendor name, it is often easily done with regular expressions and `stringR` functions. To identify the extent of the problem, we can first examine the number of unique `Vendor Name`s available in the data set.
 
-## Identify problem
+### Identify problem
 
 ```{r}
 unique_vendor_count <- ground_vehicles %>% 
@@ -127,7 +100,7 @@ unique_vendor_count <- ground_vehicles %>%
 print(length(unique_vendor_count))
 ```
 
-## Apply stringR/regex solution
+### Apply stringR/regex solution
 
 ```{r}
 ground_vehicles_cleaned <- ground_vehicles %>% 
@@ -140,24 +113,25 @@ ground_vehicles_cleaned <- ground_vehicles %>%
   )
 ```
 
-## Evaluate solution
+### Evaluate solution
 
 ```{r}
 unique_vendor_count_cleaned <- ground_vehicles_cleaned %>% 
   pull(15) %>% 
   unique()
 
-print(paste0("There are now ", length(unique_vendor_count_cleaned), " unique vendor names in the data set, when formerly there were ", length(unique_vendor_count), "! This is a difference of ", length(unique_vendor_count)-length(unique_vendor_count_cleaned), " overlapping names, prior to normalization. Nice!"))
+print(paste0("Current unique vendor names: ", length(unique_vendor_count_cleaned)))
+print(paste0("Former unique vendor names: ", length(unique_vendor_count)))
+print(paste0("Delta: ", length(unique_vendor_count)-length(unique_vendor_count_cleaned)))
 ```
 
-# Solution 2: query USASpending for additional data
+# Query USASpending API
 
-This solution is the initial step to provide misidentified or unidentified GCS contract modifications. With this same method, other API calls to the USASpending database can be queried to find additional provide misidentified or unidentified GCS contracts and vendors.
+API calls to the USASpending database can be leveraged to find additional GCS contract data.
 
 The USASpending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data ([read more](https://api.usaspending.gov/)). This example shows how to access this API utilizing the `httr2` package.
 
 There are limits to the external server's ability to handle requests, thus a final solution would be implementing a full data pipeline to leverage all relevant USASpending information. This can be done through several ways, including:
-
 -   Creating an external storage and server host of a copy of the database for faster calls
 -   Customizing API calls with more efficient querying
 
@@ -196,7 +170,7 @@ final_con_list$con <- transactions_request(combined_list$contract_num_formatted)
 final_con_list$do  <- transactions_request(combined_list$contract_num_do_formatted)
 ```
 
-## Cleaned USASpending query
+## Clean query
 
 ```{r}
 usa_spending_df <- extract_results(final_con_list) %>% 
@@ -206,7 +180,7 @@ usa_spending_df <- extract_results(final_con_list) %>%
 View(usa_spending_df)
 ```
 
-# Assessments
+# Perform Assessments
 
 ## Create theme
 
@@ -310,6 +284,8 @@ gcs_plots$spending_trends <- ggplot(
     color = "Program"
   ) +
   theme_army()
+
+gcs_plots$spending_trends
 ```
 
 ## Key technologies
@@ -343,6 +319,8 @@ gcs_plots$psc_code <- ggplot(technologies, aes(x = reorder(psc_cleaned, n), y = 
     title = "Top 10 Product & Service Codes by GCS Program"
   ) +
   theme_army()
+
+gcs_plots$psc_code
 ```
 
 ## Programs
@@ -393,6 +371,8 @@ gcs_plots$agency_share <- ggplot(
     y = "Share of Contract Actions"
   ) +
   theme_army()
+
+gcs_plots$agency_share
 ```
 
 ## Vendors
@@ -475,6 +455,8 @@ gcs_plots$vendors <- ggplot(
     fill = "Program"
   ) +
   theme_army()
+
+gcs_plots$vendors
 ```
 
 # Print
