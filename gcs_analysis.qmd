@@ -8,7 +8,7 @@ editor: visual
 
 ## Programs of Interest
 
-Illustrate funding for the following major U.S. Army Ground Combat Systems (GCS) programs:
+Illustrate funding for the following major U.S. Army Ground Combat Systems (GCS) programs contained in the portfolio data set:
 
 -   Abrams tank (e.g., M1A1)
 -   Bradley fighting vehicle (e.g., M2A1)
@@ -18,11 +18,14 @@ Illustrate funding for the following major U.S. Army Ground Combat Systems (GCS)
 
 Produce an analysis of FY16 through FY20 federal contract data for the programs of interest:
 
--    Summarize prominent vendors, funding/contracting offices, and agencies
--   Outline key spending information and vendors
--   Supplement with additional data
+-   Supplement with additional contract data
+-   Summarize spending, key technologies, contracting offices, and vendors
 
 # Initialize Project
+
+-   Load and document required packages and named functions (`clean.R`)
+-   Set parameter values (e.g., folder paths)
+-   Read in the GCS portfolio Microsoft Excel file.
 
 ## Load packages & functions
 
@@ -65,11 +68,16 @@ ground_vehicles
 
 # Clean data
 
-## Identify contracts of interest
+Clean portfolio data set to sole Contracts, Delivery Orders, and Modifications of interest to Ground Combat Systems:
+
+-   Filter data based on GCS portfolio and apply tags
+-   Identify and normalize common string inconsistencies
+-   Perform an ad hoc validation of applied changes
+
+## Filter data & apply tags
 
 ```{r}
 # filter dataframe based on ground combat systems program portfolio
-## use toupper to normalize data to be ALL CAPS
 keywords <- toupper(c("Abrams tank", "M1-A1", "M-1 Abrams", "Abrams", "M1 Abrams",
               "Bradley fighting vehicle", "Bradley", "BVF", "M2-A1", "M2A1", "M2",
               "Stryker armored personnel carrier", "M1130", "M1255 CVV", "M1130 Commander Vehicle", "M1130 CV"))
@@ -90,55 +98,48 @@ gcs_portfolio <- ground_vehicles %>%
   )
 ```
 
-## Normalize data
-
-To normalize data fields such as vendor name, it is often easily done with regular expressions and `stringR` functions. To identify the extent of the problem, we can first examine the number of unique `Vendor Names` available in the data set.
-
-### Identify problem
+## Identify string inconsistencies
 
 ```{r}
 unique_vendor_count <- ground_vehicles %>% 
   pull(12) %>% 
   unique()
 
-print(length(unique_vendor_count))
+print(paste0("Unique vendor names: ", length(unique_vendor_count)))
 ```
 
-### Apply stringR/regex solution
+## Normalize strings
 
 ```{r}
-ground_vehicles_cleaned <- ground_vehicles %>% 
-  rename(vendor_name = 12) %>% 
+ground_vehicles_cleaned <- ground_vehicles %>%
+  rename(vendor_name = 12) %>%
   mutate(
-    vendor_name_clean = toupper(vendor_name),  # convert to all caps
-    vendor_name_clean = str_replace_all(vendor_name_clean, "[.,]", ""),  # remove punctuation
-    vendor_name_clean = str_replace_all(vendor_name_clean, "\\bCOMPANY\\b", "CO"),  # normalize "COMPANY" to "CO"
-    vendor_name_clean = str_replace_all(vendor_name_clean, "\\bCORPORATION\\b", "CORP")  # normalize "CORPORATION" to "CORP"
+    vendor_name_clean = vendor_name %>%
+      str_to_upper() %>%
+      str_squish() %>% 
+      str_replace_all("[.,]", "") %>%
+      str_replace_all("\\bCO\\b", "COMPANY") %>%
+      str_replace_all("\\bCORP\\b", "CORPORATION")
   )
 ```
 
-### Evaluate solution
+## Validate change
 
 ```{r}
 unique_vendor_count_cleaned <- ground_vehicles_cleaned %>% 
   pull(15) %>% 
   unique()
 
-print(paste0("Current unique vendor names: ", length(unique_vendor_count_cleaned)))
-print(paste0("Former unique vendor names: ", length(unique_vendor_count)))
+print(paste0("Unique vendor names: ", length(unique_vendor_count_cleaned)))
 print(paste0("Delta: ", length(unique_vendor_count)-length(unique_vendor_count_cleaned)))
 ```
 
 # Query USASpending API
 
-API calls to the USASpending database can be leveraged to find additional GCS contract data.
+USASpending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data ([read more](https://api.usaspending.gov/)):
 
-The USASpending API (Application Programming Interface) allows the public to access comprehensive U.S. government spending data ([read more](https://api.usaspending.gov/)). This example shows how to access this API utilizing the `httr2` package.
-
-There are limits to the external server's ability to handle requests, thus a final solution would be implementing a full data pipeline to leverage all relevant USASpending information. This can be done through several ways, including:
-
--   Creating an external storage and server host of a copy of the database for faster calls
--   Customizing API calls with more efficient querying
+-   Access API utilizing the `httr2` package
+-   Apply named functions for more efficient querying
 
 ## Identify Contract/DOs
 
@@ -185,6 +186,12 @@ usa_spending_df
 ```
 
 # Perform Assessments
+
+Analyze data by creating visuals to represent summary statistics:
+
+-   Create consistent theme for readability and usability
+-   Pivot and visualize data utilizing `dplyr` and `ggplot2`
+-   Document key insights
 
 ## Create theme
 
@@ -236,59 +243,81 @@ gcs_plots <- list()
 
 ## Combined query
 
+Compare portfolio data to USASpending API query:
+
+-   Per number of observations in the `gcs_portfolio` (1,154) and `usa_spending_df` (1,697) – there are visbly relatively mhere are more mods available for these Contract numbers in USASpending
+-   There are two outlier contract numbers with significantly more portfolio modifications
+-   More common that one data source had the larger share of mods as compared to the other with few points directly on the dotted line where n=1
+
 ```{r}
 comparison_summary <- gcs_portfolio %>%
   transmute(
     contract_number = `Award Number (PIID)`,
-    modification_number = `Modification Number`
+    modification_number = `Modification Number`,
+    gcs_item
   ) %>%
   filter(!is.na(contract_number)) %>%
-  group_by(contract_number) %>%
-  summarise(
-    portfolio_modifications = n_distinct(modification_number),
-    .groups = "drop"
-  ) %>%
+  distinct(contract_number, modification_number, gcs_item) %>%
+  count(contract_number, gcs_item, name = "portfolio_modifications") %>%
   left_join(
     usa_spending_df %>%
-      group_by(award_id) %>%
-      summarise(
-        usaspending_modifications = n_distinct(modification_number)
-      ),
+      distinct(award_id, modification_number) %>%
+      count(award_id, name = "usaspending_modifications"),
     by = c("contract_number" = "award_id")
   ) %>%
   mutate(
-    across(starts_with("usaspending"), tidyr::replace_na, 0),
+    usaspending_modifications = coalesce(usaspending_modifications, 0L),
     modification_difference =
       usaspending_modifications - portfolio_modifications
   ) %>%
   arrange(desc(abs(modification_difference)))
 
 gcs_plots$comparison_summary <-
-ggplot(
-  comparison_summary,
-  aes(
-    x = portfolio_modifications,
-    y = usaspending_modifications
-  )
-) +
+  ggplot(
+    comparison_summary,
+    aes(
+      x = portfolio_modifications,
+      y = usaspending_modifications,
+      color = gcs_item
+    )
+  ) +
+  geom_text(
+    data = subset(comparison_summary, abs(modification_difference) > 50),
+    aes(label = contract_number),
+    size = 3,
+    nudge_y = 0.5,
+    show.legend = FALSE
+  ) +
   geom_abline(
     slope = 1,
     intercept = 0,
     linetype = "dashed",
     color = "grey60"
   ) +
-  geom_point(
-    color = "#4B5320",
-    alpha = 0.8,
-    size = 2.5
+  geom_jitter(
+    width = 0.15,
+    height = 0.15,
+    size = 4,
+    alpha = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = scales::breaks_pretty(n = 15)
+  ) +
+  scale_y_continuous(
+    breaks = scales::breaks_pretty(n = 10)
+  ) +
+  scale_color_manual(
+    values = program_colors_high_contrast,
+    labels = \(x) tools::toTitleCase(x),
+    name = "GCS Item"
   ) +
   labs(
     title = "Modification Counts: Portfolio vs. USASpending",
-    subtitle = "Points below the dashed line indicate fewer modifications returned by the API",
     x = "Portfolio Modifications",
     y = "USASpending Modifications"
   ) +
   theme_army()
+
 
 gcs_plots$comparison_summary
 ```
@@ -301,38 +330,40 @@ gcs_plots$comparison_summary
 
 ```{r}
 spending <- gcs_portfolio %>%
-  select(fiscal_year = 5, award_amount = 7, gcs_item = 15) %>%
+  select(
+    fiscal_year = 5,
+    award_amount = 7,
+    gcs_item = 15
+  ) %>%
   mutate(gcs_item = str_to_title(gcs_item)) %>%
-  group_by(fiscal_year, gcs_item) %>%
-  summarise(award_amount = sum(replace_na(award_amount, 0)), .groups = "drop") %>%
-  complete(fiscal_year, gcs_item, fill = list(award_amount = 0)) %>%
+  summarise(
+    award_amount = sum(replace_na(award_amount, 0)),
+    .by = c(fiscal_year, gcs_item)
+  ) %>%
+  complete(
+    fiscal_year,
+    gcs_item,
+    fill = list(award_amount = 0)
+  ) %>%
+  {
+    bind_rows(
+      .,
+      summarise(
+        .,
+        award_amount = sum(award_amount),
+        .by = fiscal_year
+      ) %>%
+        mutate(gcs_item = "Total")
+    )
+  } %>%
   mutate(
     label_y = case_when(
-      gcs_item == "Abrams" ~ award_amount + 150000000,
-      gcs_item == "Bradley" ~ award_amount + 80000000,
-      gcs_item == "Stryker" ~ award_amount - 50000000
+      gcs_item == "Total"    ~ award_amount + 20e6,
+      gcs_item == "Abrams"   ~ award_amount + 8e6,
+      gcs_item == "Bradley"  ~ award_amount + 44e6,
+      gcs_item == "Stryker"  ~ award_amount - 10e6,
+      TRUE                   ~ award_amount
     )
-  )
-
-# add total spending by year
-spending <- bind_rows(
-  spending,
-  spending %>%
-    group_by(fiscal_year) %>%
-    summarise(
-      award_amount = sum(award_amount),
-      gcs_item = "Total",
-      .groups = "drop"
-    )
-) %>%
-  mutate(
-    label_y = award_amount +
-      case_when(
-        gcs_item == "Abrams"  ~ 150e6,
-        gcs_item == "Bradley" ~ 80e6,
-        gcs_item == "Stryker" ~ -50e6,
-        TRUE                  ~ 100e6   # Total
-      )
   )
 
 gcs_plots$spending_trends <-
@@ -351,22 +382,21 @@ gcs_plots$spending_trends <-
   ) +
   geom_point(size = 2.5) +
   geom_label(
-    data = filter(spending, gcs_item != "Total"),
     aes(
       y = label_y,
       label = scales::label_dollar(
         scale_cut = scales::cut_short_scale()
-      )(award_amount)
+      )(award_amount),
+      fill = gcs_item
     ),
     size = 2.8,
     label.size = 0.15,
-    fill = "white",
-    color = "black",
+    color = "#F2F2F2",   # or "black" if colors are light
+    alpha = 1,
     show.legend = FALSE
   ) +
-  scale_color_manual(
-    values = program_colors_upper
-  ) +
+  scale_color_manual(values = program_colors_upper) +
+  scale_fill_manual(values = program_colors_upper) +
   scale_linetype_manual(
     values = c(
       Abrams = "solid",
@@ -400,6 +430,7 @@ gcs_plots$spending_trends
 -   Product and Service Code (PSC) is a four-digit code used by all federal government contracting activities for identifying and classifying the services and Supplies & Equipment (S&E) that are purchased under contract
 -   Top 10 PSC by GCS program shows two top PSC shared by the Abrams and Bradley programs
 -   More granular detail can be discern if additional time were utilized to scrape PSC definitions and identify key technologies or PSC of interest
+-   It is notable the top two PSC codes are shared by the Abrams and Bradley programs
 
 ```{r}
 # select and count PSCs by GCS program
@@ -412,10 +443,28 @@ technologies <- gcs_portfolio %>%
   slice_max(order_by = n, n = 10, with_ties = FALSE) %>%
   ungroup()
 
-# top 10 PSC by GCS program
-gcs_plots$psc_code <- ggplot(technologies, aes(x = reorder(psc_cleaned, n), y = n, fill = gcs_item)) +
+# totals by program
+psc_totals <- technologies %>%
+  summarise(total = sum(n), .by = gcs_item)
+
+# add totals for facet labels
+technologies <- technologies %>%
+  left_join(psc_totals, by = "gcs_item")
+
+gcs_plots$psc_code <-
+  ggplot(
+    technologies,
+    aes(x = reorder(psc_cleaned, n), y = n, fill = gcs_item)
+  ) +
   geom_col(show.legend = FALSE) +
-  facet_wrap(~gcs_item, scales = "free_y", labeller = labeller(gcs_item = str_to_title)) +
+  facet_wrap(
+    ~gcs_item,
+    scales = "free_y",
+    labeller = as_labeller(\(x) {
+      totals <- setNames(psc_totals$total, psc_totals$gcs_item)
+      paste0(str_to_title(x), "\n(n = ", scales::comma(totals[x]), ")")
+    })
+  ) +
   coord_flip() +
   scale_fill_manual(values = program_colors) +
   labs(
@@ -423,7 +472,16 @@ gcs_plots$psc_code <- ggplot(technologies, aes(x = reorder(psc_cleaned, n), y = 
     y = "Contract Count",
     title = "Top 10 PSC by GCS Program"
   ) +
+  geom_text(
+    aes(label = scales::comma(n)),
+    hjust = -0.15,
+    size = 3
+  ) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.1))
+  ) +
   theme_army()
+
 
 gcs_plots$psc_code
 ```
@@ -532,7 +590,9 @@ gcs_plots$abrams_agency_share
 
 ## Vendors
 
--   L3 Technologies, Inc. had the highest award amount in 2016, but thereafter General Dynamics Land Systems, Inc. dominated in all subsequent years available in the dataset
+-   General Dynamics Land Systems Inc. (GDLS) was by far the highest awarded vendor in this time period
+-   Abrams awards dominated for the top 10 vendors by total award amount in this period
+-   It is interesting that the majority of vendors only contracted for one of the two programs
 
 ```{r}
 vendor_summary <- gcs_portfolio %>% 
