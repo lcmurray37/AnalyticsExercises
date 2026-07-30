@@ -46,21 +46,29 @@ transactions_request <- function(ids) {
   out <- purrr::map(
     ids,
     \(id) {
-      req |>
-        httr2::req_body_json(
-          list(
-            award_id = id,
-            page = 1
-          )
-        ) |>
-        httr2::req_perform() |>
-        httr2::resp_body_json()
+      tryCatch(
+        {
+          req |>
+            httr2::req_body_json(
+              list(
+                award_id = id,
+                page = 1
+              )
+            ) |>
+            httr2::req_perform() |>
+            httr2::resp_body_json()
+        },
+        error = function(e) {
+          message("Failed: ", id)
+          NULL
+        }
+      )
     },
     .progress = "Transactions"
   )
   
   names(out) <- ids
-  out
+  out[!purrr::map_lgl(out, is.null)]
 }
 
 # perform summary API request from USASpending

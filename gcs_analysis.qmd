@@ -1,7 +1,13 @@
 ---
 title: "Ground Combat Systems (GCS) Analysis"
-format: html
-editor: visual
+format:
+  html:
+    toc: true
+    code-fold: true
+execute:
+  echo: true
+  warning: false
+  message: false
 ---
 
 # Objective
